@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InvestMap — High Cap Rate Finder</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <aside id="sidebar">
+
+    <div id="sidebar-header">
+      <div id="logo">
+        <i class="fas fa-map-marked-alt"></i>
+        <span>InvestMap</span>
+      </div>
+      <p class="tagline">Discover high cap-rate investment properties</p>
+    </div>
+
+    <!-- Tab switcher -->
+    <div id="tab-bar">
+      <button class="tab active" data-tab="zip" onclick="switchTab('zip')">
+        <i class="fas fa-search-location"></i> ZIP Search
+      </button>
+      <button class="tab" data-tab="upload" onclick="switchTab('upload')">
+        <i class="fas fa-upload"></i> Upload CSV
+      </button>
+    </div>
+
+    <!-- ── ZIP tab ── -->
+    <div id="tab-zip" class="tab-panel">
+
+      <div class="form-group">
+        <label>ZIP Code</label>
+        <input id="zip-input" type="text" placeholder="e.g. 47906" maxlength="5" />
+      </div>
+
+      <!-- Shared filters (rendered once, used by both tabs) -->
+      <div id="shared-filters">
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Min Cap Rate</label>
+            <div class="input-affix">
+              <input id="min-cap-rate" type="number" value="4" min="0" max="30" step="0.5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Min Cash-on-Cash</label>
+            <div class="input-affix">
+              <input id="min-coc" type="number" value="3" min="0" max="30" step="0.5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Down Payment</label>
+            <div class="input-affix">
+              <input id="down-pct" type="number" value="25" min="5" max="100" step="5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Interest Rate</label>
+            <div class="input-affix">
+              <input id="rate" type="number" value="7.0" min="1" max="20" step="0.1" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Max Price</label>
+            <div class="input-affix">
+              <span class="prefix">$</span>
+              <input id="max-price" type="number" placeholder="Any" min="0" step="50000" />
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Monthly Rent %</label>
+            <div class="input-affix">
+              <input id="rent-pct" type="number" value="0.7" min="0.1" max="3" step="0.1" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+      </div><!-- /shared-filters -->
+
+      <label class="checkbox-row">
+        <input id="force-refresh" type="checkbox" />
+        <span>Force re-scrape from Redfin (local only)</span>
+      </label>
+
+      <button class="primary-btn" onclick="searchByZip()">
+        <i class="fas fa-search"></i>&nbsp; Analyze ZIP Code
+      </button>
+
+    </div><!-- /tab-zip -->
+
+    <!-- ── Upload tab ── -->
+    <div id="tab-upload" class="tab-panel hidden">
+
+      <div class="upload-info">
+        <p>
+          <strong>How to use:</strong> Run <code>python scrape_listings.py &lt;zip&gt;</code>
+          locally, then upload the generated <code>redfin_&lt;zip&gt;.csv</code> here.
+        </p>
+        <p>Required columns: <code>address, city, state, zipcode, price</code></p>
+      </div>
+
+      <div id="drop-zone" onclick="document.getElementById('csv-file').click()">
+        <i class="fas fa-file-csv fa-2x"></i>
+        <p>Click to select a CSV file</p>
+        <p class="drop-sub">or drag &amp; drop here</p>
+        <span id="file-name"></span>
+      </div>
+      <input id="csv-file" type="file" accept=".csv" style="display:none" onchange="onFileSelected(this)" />
+
+      <button class="primary-btn" id="upload-btn" onclick="analyzeUpload()" disabled>
+        <i class="fas fa-chart-bar"></i>&nbsp; Analyze CSV
+      </button>
+
+    </div><!-- /tab-upload -->
+
+    <!-- Loading -->
+    <div id="loading" class="hidden">
+      <div class="spinner"></div>
+      <p id="loading-msg">Analyzing…</p>
+      <p class="loading-sub">Geocoding may take a minute for new addresses</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" class="hidden">
+      <i class="fas fa-exclamation-circle"></i>
+      <span id="error-text"></span>
+    </div>
+
+    <!-- Results header -->
+    <div id="results-header" class="hidden">
+      <span id="results-count"></span>
+      <div id="legend">
+        <span class="dot dot-excellent"></span>&ge;8%
+        <span class="dot dot-good"></span>6–8%
+        <span class="dot dot-fair"></span>4–6%
+        <span class="dot dot-poor"></span>&lt;4%
+        <span class="legend-label">Cap Rate</span>
+      </div>
+    </div>
+
+    <!-- Listing cards -->
+    <div id="listings-list"></div>
+
+  </aside>
+
+  <!-- ── Map ── -->
+  <main id="map-wrap">
+    <div id="map"></div>
+    <div id="map-placeholder">
+      <i class="fas fa-map-marked-alt"></i>
+      <p>Enter a ZIP code or upload a CSV to find investment properties</p>
+    </div>
+  </main>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
