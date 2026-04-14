@@ -29,6 +29,10 @@ except ImportError:
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024   # 5 MB upload limit
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return jsonify({"error": str(e)}), 500
+
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 # On Render / cloud, write to /tmp so we have write permissions
 DATA_DIR   = os.environ.get("DATA_DIR", BASE_DIR)
@@ -150,6 +154,11 @@ def underwrite_and_geocode(df, params):
     if max_price:
         df = df[df["price"] <= max_price].copy()
 
+    # Drop rows missing required string fields (scraper sometimes returns NaN address/city/state)
+    for str_col in ["address", "city", "state", "zipcode"]:
+        if str_col in df.columns:
+            df = df[df[str_col].notna() & (df[str_col].astype(str).str.strip() != "")].copy()
+
     total_scraped = len(df)
     if total_scraped == 0:
         return None, "No valid listings after filtering. Try relaxing your criteria."
@@ -164,26 +173,48 @@ def underwrite_and_geocode(df, params):
         Financing(down_payment_pct=down_pct / 100, interest_rate=rate / 100),
         OperatingAssumptions(),
     )
-    results = engine.analyze_dataframe(df, col_map)
+    try:
+        results = engine.analyze_dataframe(df, col_map)
+    except Exception as e:
+        return None, f"Underwriting failed: {e}"
 
     filtered = results[
         (results["cap_rate"] >= min_cap_rate) | (results["cash_on_cash"] >= min_coc)
     ].copy().sort_values("cap_rate", ascending=False)
 
     if "listing_url" in df.columns:
-        url_map = df.set_index("address")["listing_url"].to_dict()
+        url_map = df.drop_duplicates(subset=["address"]).set_index("address")["listing_url"].to_dict()
         filtered["listing_url"] = filtered["address"].map(url_map)
+
+    # Pre-extract lat/lon embedded in source data (Redfin GIS-CSV includes them)
+    coord_map = {}
+    if "lat" in df.columns and "lon" in df.columns:
+        for _, src in df.iterrows():
+            addr = str(src.get("address", "")).strip()
+            lat  = safe_float(src.get("lat"))
+            lon  = safe_float(src.get("lon"))
+            if addr and lat is not None and lon is not None:
+                coord_map[addr] = {"lat": lat, "lon": lon}
 
     geo_cache = _geo_load()
     inferred_zip = zip_code or (str(df["zipcode"].dropna().iloc[0]) if "zipcode" in df.columns and not df["zipcode"].dropna().empty else "")
-    zip_center = geocode_zip(inferred_zip, geo_cache) if inferred_zip else None
+
+    # Use data centroid as map center if we have embedded coords; otherwise geocode zip
+    if coord_map:
+        lats = [c["lat"] for c in coord_map.values()]
+        lons = [c["lon"] for c in coord_map.values()]
+        zip_center = {"lat": sum(lats) / len(lats), "lon": sum(lons) / len(lons)}
+    else:
+        zip_center = geocode_zip(inferred_zip, geo_cache) if inferred_zip else None
 
     listings = []
     for _, row in filtered.iterrows():
         row_zip = str(row.get("zipcode", inferred_zip))
-        coords  = geocode_address(
-            str(row.get("address", "")), str(row.get("city", "")),
-            str(row.get("state", "")),  row_zip, geo_cache,
+        addr    = str(row.get("address", "")).strip()
+        # Use embedded coords when available; fall back to Nominatim geocoding
+        coords = coord_map.get(addr) or geocode_address(
+            addr, str(row.get("city", "")),
+            str(row.get("state", "")), row_zip, geo_cache,
         )
         listing = {
             "address":           str(row.get("address", "")),
@@ -238,63 +269,71 @@ def index():
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
     """Analyze a ZIP code — loads cached CSV or scrapes (local-only)."""
-    body     = request.get_json(silent=True) or {}
-    zip_code = str(body.get("zip_code", "")).strip()
+    try:
+        body     = request.get_json(silent=True) or {}
+        zip_code = str(body.get("zip_code", "")).strip()
 
-    if not zip_code or not zip_code.isdigit() or len(zip_code) != 5:
-        return jsonify({"error": "Please enter a valid 5-digit ZIP code."}), 400
+        if not zip_code or not zip_code.isdigit() or len(zip_code) != 5:
+            return jsonify({"error": "Please enter a valid 5-digit ZIP code."}), 400
 
-    force_refresh = bool(body.get("force_refresh", False))
-    csv_path      = os.path.join(DATA_DIR, f"redfin_{zip_code}.csv")
+        force_refresh = bool(body.get("force_refresh", False))
+        csv_path      = os.path.join(DATA_DIR, f"redfin_{zip_code}.csv")
 
-    if force_refresh or not os.path.exists(csv_path):
-        if not SCRAPING_ENABLED:
-            return jsonify({
-                "error": (
-                    "Live scraping is disabled on this server (Redfin blocks cloud IPs). "
-                    "Run scrape_listings.py locally, then upload the CSV using the Upload tab."
-                )
-            }), 503
-        print(f"[INFO] Scraping Redfin for ZIP {zip_code} …")
-        df = scrape_redfin_zip(zip_code, max_pages=2, max_listings=30)
-        if df.empty:
-            return jsonify({"error": f"No listings found for ZIP {zip_code}. Try another ZIP."}), 404
-        df.to_csv(csv_path, index=False)
-    else:
-        df = pd.read_csv(csv_path)
+        if force_refresh or not os.path.exists(csv_path):
+            if not SCRAPING_ENABLED:
+                return jsonify({
+                    "error": (
+                        "Live scraping is disabled on this server (Redfin blocks cloud IPs). "
+                        "Run scrape_listings.py locally, then upload the CSV using the Upload tab."
+                    )
+                }), 503
+            print(f"[INFO] Scraping Redfin for ZIP {zip_code} …")
+            df = scrape_redfin_zip(zip_code)
+            if df.empty:
+                return jsonify({"error": f"No listings found for ZIP {zip_code}. Try another ZIP."}), 404
+            df.to_csv(csv_path, index=False)
+        else:
+            df = pd.read_csv(csv_path)
 
-    body["zip_code"] = zip_code
-    payload, err = underwrite_and_geocode(df, parse_params(body))
-    if err:
-        return jsonify({"error": err}), 404
-    return jsonify(payload)
+        body["zip_code"] = zip_code
+        payload, err = underwrite_and_geocode(df, parse_params(body))
+        if err:
+            return jsonify({"error": err}), 404
+        return jsonify(payload)
+    except Exception as e:
+        print(f"[ERROR /api/analyze] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
     """Analyze a user-uploaded CSV file."""
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded."}), 400
-
-    f = request.files["file"]
-    if not f.filename.lower().endswith(".csv"):
-        return jsonify({"error": "Please upload a .csv file."}), 400
-
     try:
-        df = pd.read_csv(io.StringIO(f.read().decode("utf-8", errors="replace")))
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded."}), 400
+
+        f = request.files["file"]
+        if not f.filename.lower().endswith(".csv"):
+            return jsonify({"error": "Please upload a .csv file."}), 400
+
+        try:
+            df = pd.read_csv(io.StringIO(f.read().decode("utf-8", errors="replace")))
+        except Exception as e:
+            return jsonify({"error": f"Could not parse CSV: {e}"}), 400
+
+        required = {"address", "city", "state", "zipcode", "price"}
+        missing  = required - set(df.columns)
+        if missing:
+            return jsonify({"error": f"CSV is missing required columns: {', '.join(sorted(missing))}"}), 400
+
+        params = parse_params(request.form)
+        payload, err = underwrite_and_geocode(df, params)
+        if err:
+            return jsonify({"error": err}), 404
+        return jsonify(payload)
     except Exception as e:
-        return jsonify({"error": f"Could not parse CSV: {e}"}), 400
-
-    required = {"address", "city", "state", "zipcode", "price"}
-    missing  = required - set(df.columns)
-    if missing:
-        return jsonify({"error": f"CSV is missing required columns: {', '.join(sorted(missing))}"}), 400
-
-    params = parse_params(request.form)
-    payload, err = underwrite_and_geocode(df, params)
-    if err:
-        return jsonify({"error": err}), 404
-    return jsonify(payload)
+        print(f"[ERROR /api/upload] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Run ───────────────────────────────────────────────────────────────────── #
