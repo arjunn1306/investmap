@@ -1,10 +1,10 @@
 /* ── State ────────────────────────────────────────────────────────────────── */
 let map;
-let markers        = [];
+let markers         = [];
 let currentListings = [];
-let activeIdx      = -1;
-let activeTab      = "zip";
-let selectedFile   = null;
+let activeIdx       = -1;
+let selectedFile    = null;   // file from ZIP tab drop-zone
+let selectedFileRaw = null;   // file from raw Upload tab
 
 /* ── Map init ─────────────────────────────────────────────────────────────── */
 function initMap() {
@@ -17,7 +17,6 @@ function initMap() {
 
 /* ── Tab switching ────────────────────────────────────────────────────────── */
 function switchTab(tab) {
-  activeTab = tab;
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.tab === tab)
   );
@@ -26,13 +25,36 @@ function switchTab(tab) {
   clearError();
 }
 
-/* ── File selection ───────────────────────────────────────────────────────── */
+/* ── ZIP input → update Redfin link ──────────────────────────────────────── */
+function onZipInput(val) {
+  const link = document.getElementById("redfin-link");
+  const zip  = val.trim();
+  link.href = zip.length === 5 && /^\d{5}$/.test(zip)
+    ? `https://www.redfin.com/zipcode/${zip}`
+    : "https://www.redfin.com";
+}
+
+/* ── File selection (ZIP tab) ─────────────────────────────────────────────── */
 function onFileSelected(input) {
   selectedFile = input.files[0] || null;
-  const nameEl  = document.getElementById("file-name");
+  const nameEl    = document.getElementById("file-name");
   const uploadBtn = document.getElementById("upload-btn");
   if (selectedFile) {
     nameEl.textContent = selectedFile.name;
+    uploadBtn.disabled = false;
+  } else {
+    nameEl.textContent = "Click to select CSV";
+    uploadBtn.disabled = true;
+  }
+}
+
+/* ── File selection (raw Upload tab) ─────────────────────────────────────── */
+function onFileSelectedUpload(input) {
+  selectedFileRaw = input.files[0] || null;
+  const nameEl    = document.getElementById("file-name-upload");
+  const uploadBtn = document.getElementById("upload-btn-raw");
+  if (selectedFileRaw) {
+    nameEl.textContent = selectedFileRaw.name;
     uploadBtn.disabled = false;
   } else {
     nameEl.textContent = "";
@@ -40,9 +62,10 @@ function onFileSelected(input) {
   }
 }
 
-// Drag-and-drop
+/* ── Drag-and-drop (ZIP tab) ──────────────────────────────────────────────── */
 function initDropZone() {
   const zone = document.getElementById("drop-zone");
+  if (!zone) return;
   zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
   zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
   zone.addEventListener("drop", e => {
@@ -53,6 +76,23 @@ function initDropZone() {
       selectedFile = file;
       document.getElementById("file-name").textContent = file.name;
       document.getElementById("upload-btn").disabled = false;
+    } else {
+      showError("Please drop a .csv file.");
+    }
+  });
+
+  const zoneRaw = document.getElementById("drop-zone-upload");
+  if (!zoneRaw) return;
+  zoneRaw.addEventListener("dragover", e => { e.preventDefault(); zoneRaw.classList.add("drag-over"); });
+  zoneRaw.addEventListener("dragleave", () => zoneRaw.classList.remove("drag-over"));
+  zoneRaw.addEventListener("drop", e => {
+    e.preventDefault();
+    zoneRaw.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith(".csv")) {
+      selectedFileRaw = file;
+      document.getElementById("file-name-upload").textContent = file.name;
+      document.getElementById("upload-btn-raw").disabled = false;
     } else {
       showError("Please drop a .csv file.");
     }
@@ -96,7 +136,7 @@ function markerIcon(cr, idx) {
 function buildPopup(l) {
   const color = capColor(l.cap_rate || 0);
   const btn   = l.listing_url
-    ? `<a class="redfin-btn" href="${l.listing_url}" target="_blank" rel="noopener">View on Redfin &rarr;</a>`
+    ? `<a class="redfin-popup-btn" href="${l.listing_url}" target="_blank" rel="noopener">View on Redfin &rarr;</a>`
     : "";
   return `<div class="popup-inner">
     <h3>${l.address}<br><small style="font-weight:400;color:#64748b">${l.city}, ${l.state}</small></h3>
@@ -201,7 +241,7 @@ function renderMarkers(listings) {
 function applyResults(data) {
   currentListings = data.listings;
   document.getElementById("results-count").textContent =
-    `${data.total} matching / ${data.total_scraped} total in ZIP ${data.zip_code}`;
+    `${data.total} matching / ${data.total_scraped} total`;
   document.getElementById("results-header").classList.remove("hidden");
   document.getElementById("map-placeholder").classList.add("hidden");
   renderCards(currentListings);
@@ -211,7 +251,7 @@ function applyResults(data) {
   }
 }
 
-/* ── Shared filter values ─────────────────────────────────────────────────── */
+/* ── Filter params (ZIP tab) ──────────────────────────────────────────────── */
 function filterParams() {
   return {
     min_cap_rate: parseFloat(document.getElementById("min-cap-rate").value) / 100,
@@ -223,37 +263,24 @@ function filterParams() {
   };
 }
 
-/* ── ZIP search ───────────────────────────────────────────────────────────── */
-async function searchByZip() {
-  const zip = document.getElementById("zip-input").value.trim();
-  if (!zip || !/^\d{5}$/.test(zip)) { showError("Please enter a valid 5-digit ZIP code."); return; }
-
-  resetResults();
-  const force = document.getElementById("force-refresh").checked;
-  setLoading(true, force ? "Scraping Redfin listings… (may take 1–3 min)" : "Loading and analyzing listings…");
-
-  try {
-    const res  = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ zip_code: zip, force_refresh: force, ...filterParams() }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) { showError(data.error || "An unexpected error occurred."); return; }
-    applyResults(data);
-  } catch (e) {
-    setLoading(false);
-    showError("Network error: " + e.message);
-  }
+/* ── Filter params (Upload tab) ───────────────────────────────────────────── */
+function filterParamsUpload() {
+  return {
+    min_cap_rate: parseFloat(document.getElementById("min-cap-rate-u").value) / 100,
+    min_coc:      parseFloat(document.getElementById("min-coc-u").value) / 100,
+    max_price:    parseFloat(document.getElementById("max-price-u").value) || 0,
+    down_pct:     parseFloat(document.getElementById("down-pct-u").value),
+    rate:         parseFloat(document.getElementById("rate-u").value),
+    rent_pct:     parseFloat(document.getElementById("rent-pct-u").value),
+  };
 }
 
-/* ── CSV upload ───────────────────────────────────────────────────────────── */
+/* ── Analyze (ZIP tab — uploads Redfin CSV for that ZIP) ──────────────────── */
 async function analyzeUpload() {
   if (!selectedFile) { showError("Please select a CSV file first."); return; }
 
   resetResults();
-  setLoading(true, "Analyzing uploaded CSV…");
+  setLoading(true, "Analyzing listings…");
 
   const fd = new FormData();
   fd.append("file", selectedFile);
@@ -272,16 +299,40 @@ async function analyzeUpload() {
   }
 }
 
+/* ── Analyze (raw Upload tab) ─────────────────────────────────────────────── */
+async function analyzeUploadRaw() {
+  if (!selectedFileRaw) { showError("Please select a CSV file first."); return; }
+
+  resetResults();
+  setLoading(true, "Analyzing CSV…");
+
+  const fd = new FormData();
+  fd.append("file", selectedFileRaw);
+  const fp = filterParamsUpload();
+  Object.entries(fp).forEach(([k, v]) => fd.append(k, v));
+
+  try {
+    const res  = await fetch("/api/upload", { method: "POST", body: fd });
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) { showError(data.error || "An unexpected error occurred."); return; }
+    applyResults(data);
+  } catch (e) {
+    setLoading(false);
+    showError("Network error: " + e.message);
+  }
+}
+
 /* ── UI helpers ───────────────────────────────────────────────────────────── */
 function setLoading(on, msg = "Loading…") {
-  const allBtns = document.querySelectorAll(".primary-btn");
-  allBtns.forEach(b => b.disabled = on);
+  document.querySelectorAll(".primary-btn").forEach(b => b.disabled = on);
   document.getElementById("loading").classList.toggle("hidden", !on);
   document.getElementById("loading-msg").textContent = msg;
   if (!on) {
-    // re-enable upload btn only if file is selected
-    const uploadBtn = document.getElementById("upload-btn");
-    if (uploadBtn) uploadBtn.disabled = !selectedFile;
+    const btn = document.getElementById("upload-btn");
+    if (btn) btn.disabled = !selectedFile;
+    const btnRaw = document.getElementById("upload-btn-raw");
+    if (btnRaw) btnRaw.disabled = !selectedFileRaw;
   }
 }
 
@@ -302,7 +353,4 @@ function resetResults() {
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
   initDropZone();
-  document.getElementById("zip-input").addEventListener("keydown", e => {
-    if (e.key === "Enter") searchByZip();
-  });
 });

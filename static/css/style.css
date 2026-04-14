@@ -150,6 +150,43 @@ input::placeholder { color: var(--text-muted); }
 .primary-btn:active:not(:disabled) { transform: scale(.98); }
 .primary-btn:disabled { background: #334155; color: var(--text-muted); cursor: not-allowed; }
 
+/* ── Step boxes ───────────────────────────────────────────────────────────── */
+.step-box {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px; margin-bottom: 10px;
+}
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 0.72rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 2px;
+}
+.step-body { flex: 1; min-width: 0; }
+.step-title { font-size: 0.82rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.step-desc  { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 8px; }
+.redfin-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #d03027; color: #fff;
+  font-size: 0.78rem; font-weight: 600;
+  padding: 5px 12px; border-radius: 5px;
+  text-decoration: none; transition: background .15s;
+}
+.redfin-btn:hover { background: #b02520; }
+#drop-zone {
+  border: 2px dashed var(--border); border-radius: 6px;
+  padding: 8px 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.78rem; color: var(--text-dim);
+  transition: border-color .15s, background .15s;
+}
+#drop-zone:hover, #drop-zone.drag-over {
+  border-color: var(--accent); background: rgba(59,130,246,.05);
+}
+#drop-zone i { color: var(--text-muted); font-size: 1.1rem; flex-shrink: 0; }
+#file-name { color: var(--accent); font-weight: 600; }
+
 /* ── Upload zone ──────────────────────────────────────────────────────────── */
 .upload-info {
   background: rgba(59,130,246,.07);

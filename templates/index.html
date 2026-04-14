@@ -37,10 +37,36 @@
 
       <div class="form-group">
         <label>ZIP Code</label>
-        <input id="zip-input" type="text" placeholder="e.g. 47906" maxlength="5" />
+        <input id="zip-input" type="text" placeholder="e.g. 95037" maxlength="5"
+               oninput="onZipInput(this.value)" />
       </div>
 
-      <!-- Shared filters (rendered once, used by both tabs) -->
+      <!-- Step 1: Get data from Redfin -->
+      <div class="step-box">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Download listings from Redfin</div>
+          <div class="step-desc">Opens Redfin for your ZIP. Click <strong>Download All</strong> on that page.</div>
+          <a id="redfin-link" href="https://www.redfin.com/zipcode/00000" target="_blank" class="redfin-btn">
+            <i class="fas fa-external-link-alt"></i> Open Redfin &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- Step 2: Upload the CSV -->
+      <div class="step-box">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Upload the downloaded CSV</div>
+          <div id="drop-zone" onclick="document.getElementById('csv-file').click()">
+            <i class="fas fa-file-csv"></i>
+            <span id="file-name">Click to select CSV</span>
+          </div>
+          <input id="csv-file" type="file" accept=".csv" style="display:none" onchange="onFileSelected(this)" />
+        </div>
+      </div>
+
+      <!-- Shared filters -->
       <div id="shared-filters">
         <div class="form-row">
           <div class="form-group half">
@@ -94,37 +120,80 @@
         </div>
       </div><!-- /shared-filters -->
 
-      <label class="checkbox-row">
-        <input id="force-refresh" type="checkbox" />
-        <span>Force re-scrape from Redfin (local only)</span>
-      </label>
-
-      <button class="primary-btn" onclick="searchByZip()">
-        <i class="fas fa-search"></i>&nbsp; Analyze ZIP Code
+      <button class="primary-btn" id="upload-btn" onclick="analyzeUpload()" disabled>
+        <i class="fas fa-chart-bar"></i>&nbsp; Analyze Listings
       </button>
 
     </div><!-- /tab-zip -->
 
-    <!-- ── Upload tab ── -->
+    <!-- ── Upload tab (kept for raw CSV uploads) ── -->
     <div id="tab-upload" class="tab-panel hidden">
 
       <div class="upload-info">
-        <p>
-          <strong>How to use:</strong> Run <code>python scrape_listings.py &lt;zip&gt;</code>
-          locally, then upload the generated <code>redfin_&lt;zip&gt;.csv</code> here.
-        </p>
-        <p>Required columns: <code>address, city, state, zipcode, price</code></p>
+        <p>Upload any CSV with columns: <code>address, city, state, zipcode, price</code></p>
+        <p>Optional: <code>est_rent, taxes, insurance, hoa</code></p>
       </div>
 
-      <div id="drop-zone" onclick="document.getElementById('csv-file').click()">
+      <div id="drop-zone-upload" onclick="document.getElementById('csv-file-upload').click()">
         <i class="fas fa-file-csv fa-2x"></i>
         <p>Click to select a CSV file</p>
         <p class="drop-sub">or drag &amp; drop here</p>
-        <span id="file-name"></span>
+        <span id="file-name-upload"></span>
       </div>
-      <input id="csv-file" type="file" accept=".csv" style="display:none" onchange="onFileSelected(this)" />
+      <input id="csv-file-upload" type="file" accept=".csv" style="display:none" onchange="onFileSelectedUpload(this)" />
 
-      <button class="primary-btn" id="upload-btn" onclick="analyzeUpload()" disabled>
+      <div id="shared-filters-upload">
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Min Cap Rate</label>
+            <div class="input-affix">
+              <input id="min-cap-rate-u" type="number" value="4" min="0" max="30" step="0.5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Min Cash-on-Cash</label>
+            <div class="input-affix">
+              <input id="min-coc-u" type="number" value="3" min="0" max="30" step="0.5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Down Payment</label>
+            <div class="input-affix">
+              <input id="down-pct-u" type="number" value="25" min="5" max="100" step="5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Interest Rate</label>
+            <div class="input-affix">
+              <input id="rate-u" type="number" value="7.0" min="1" max="20" step="0.1" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Max Price</label>
+            <div class="input-affix">
+              <span class="prefix">$</span>
+              <input id="max-price-u" type="number" placeholder="Any" min="0" step="50000" />
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Monthly Rent %</label>
+            <div class="input-affix">
+              <input id="rent-pct-u" type="number" value="0.7" min="0.1" max="3" step="0.1" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="primary-btn" id="upload-btn-raw" onclick="analyzeUploadRaw()" disabled>
         <i class="fas fa-chart-bar"></i>&nbsp; Analyze CSV
       </button>
 

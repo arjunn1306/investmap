@@ -13,18 +13,35 @@ import requests
 import pandas as pd
 from typing import Optional
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/125.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.redfin.com/",
-}
-
 AUTOCOMPLETE_URL = "https://www.redfin.com/stingray/do/location-autocomplete"
 GIS_CSV_URL      = "https://www.redfin.com/stingray/api/gis-csv"
+
+def _make_session() -> requests.Session:
+    """Create a session that mimics a real browser, including cookies from homepage."""
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Referer": "https://www.redfin.com/",
+    })
+    try:
+        # Visit homepage first to get session cookies (bypasses bot detection)
+        session.get("https://www.redfin.com/", timeout=15)
+    except Exception:
+        pass
+    # Switch to JSON accept header for API calls
+    session.headers.update({
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+    })
+    return session
 
 
 def _to_num(val) -> Optional[float]:
@@ -38,16 +55,15 @@ def _to_num(val) -> Optional[float]:
         return None
 
 
-def _get_region(zip_code: str) -> Optional[dict]:
+def _get_region(zip_code: str, session: requests.Session) -> Optional[dict]:
     """
     Query Redfin's autocomplete API to get region metadata for a ZIP code.
     Returns {'region_id', 'region_type', 'market'} or None.
     """
     try:
-        r = requests.get(
+        r = session.get(
             AUTOCOMPLETE_URL,
             params={"location": zip_code, "count": 10, "v": 2},
-            headers=HEADERS,
             timeout=15,
         )
         print(f"[REDFIN] Autocomplete status: {r.status_code}")
@@ -95,7 +111,8 @@ def scrape_redfin_zip(zip_code: str) -> pd.DataFrame:
 
     lat/lon come directly from Redfin — no geocoding needed for most listings.
     """
-    region = _get_region(zip_code)
+    session = _make_session()
+    region = _get_region(zip_code, session)
     if not region:
         print(f"[REDFIN] Could not resolve region for ZIP {zip_code}")
         return pd.DataFrame()
@@ -112,7 +129,7 @@ def scrape_redfin_zip(zip_code: str) -> pd.DataFrame:
 
     print(f"[REDFIN] GIS-CSV params: {params}")
     try:
-        r = requests.get(GIS_CSV_URL, params=params, headers=HEADERS, timeout=30)
+        r = session.get(GIS_CSV_URL, params=params, timeout=30)
         print(f"[REDFIN] GIS-CSV status: {r.status_code}, size: {len(r.text)} bytes")
         print(f"[REDFIN] GIS-CSV first 200 chars: {r.text[:200]}")
         if r.status_code != 200:
