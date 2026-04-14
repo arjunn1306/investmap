@@ -50,24 +50,38 @@ def _get_region(zip_code: str) -> Optional[dict]:
             headers=HEADERS,
             timeout=15,
         )
+        print(f"[REDFIN] Autocomplete status: {r.status_code}")
+
         # Redfin prepends "{}&&\n" before the real JSON payload
         text = r.text.strip()
         if text.startswith("{}&&"):
             text = text[4:].strip()
         data = json.loads(text)
 
+        # Collect all rows from all sections
+        all_rows = []
         for section in data.get("payload", {}).get("sections", []):
-            for row in section.get("rows", []):
-                # type 2 = postal / zip code region
-                if str(row.get("type", "")) == "2":
-                    tid = row.get("id", {})
-                    return {
-                        "region_id":   tid.get("tableId"),
-                        "region_type": tid.get("type", 2),
-                        "market":      row.get("market", ""),
-                    }
+            all_rows.extend(section.get("rows", []))
+
+        print(f"[REDFIN] Autocomplete rows: {len(all_rows)}")
+        for row in all_rows:
+            print(f"  type={row.get('type')} name={row.get('name')} market={row.get('market')} id={row.get('id')}")
+
+        # Prefer type 2 (ZIP code), fall back to first result
+        match = next((r for r in all_rows if str(r.get("type", "")) == "2"), None)
+        if match is None and all_rows:
+            match = all_rows[0]
+            print(f"[REDFIN] No type-2 row found, using first result")
+
+        if match:
+            tid = match.get("id", {})
+            return {
+                "region_id":   tid.get("tableId"),
+                "region_type": tid.get("type", 2),
+                "market":      match.get("market", ""),
+            }
     except Exception as e:
-        print(f"[REDFIN AUTOCOMPLETE] {e}")
+        print(f"[REDFIN AUTOCOMPLETE ERROR] {e}")
     return None
 
 
@@ -96,12 +110,16 @@ def scrape_redfin_zip(zip_code: str) -> pd.DataFrame:
         "v":           8,
     }
 
+    print(f"[REDFIN] GIS-CSV params: {params}")
     try:
         r = requests.get(GIS_CSV_URL, params=params, headers=HEADERS, timeout=30)
+        print(f"[REDFIN] GIS-CSV status: {r.status_code}, size: {len(r.text)} bytes")
+        print(f"[REDFIN] GIS-CSV first 200 chars: {r.text[:200]}")
         if r.status_code != 200:
             print(f"[REDFIN] GIS-CSV returned HTTP {r.status_code}")
             return pd.DataFrame()
         raw = pd.read_csv(io.StringIO(r.text))
+        print(f"[REDFIN] CSV rows: {len(raw)}, columns: {list(raw.columns)[:6]}")
     except Exception as e:
         print(f"[REDFIN] CSV download/parse error: {e}")
         return pd.DataFrame()
