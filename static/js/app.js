@@ -3,8 +3,9 @@ let map;
 let markers         = [];
 let currentListings = [];
 let activeIdx       = -1;
-let selectedFile    = null;   // file from ZIP tab drop-zone
-let selectedFileRaw = null;   // file from raw Upload tab
+let selectedFile    = null;   // Upload tab file
+let zipFile         = null;   // ZIP tab file
+let searchPanelOpen = true;
 
 /* ── Map init ─────────────────────────────────────────────────────────────── */
 function initMap() {
@@ -13,6 +14,25 @@ function initMap() {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   }).addTo(map);
+}
+
+/* ── Search panel toggle ──────────────────────────────────────────────────── */
+function toggleSearch() {
+  searchPanelOpen = !searchPanelOpen;
+  document.getElementById("search-panel").classList.toggle("collapsed", !searchPanelOpen);
+  document.getElementById("toggle-search-btn").classList.toggle("active", searchPanelOpen);
+}
+
+function collapseSearch() {
+  searchPanelOpen = false;
+  document.getElementById("search-panel").classList.add("collapsed");
+  document.getElementById("toggle-search-btn").classList.remove("active");
+}
+
+function expandSearch() {
+  searchPanelOpen = true;
+  document.getElementById("search-panel").classList.remove("collapsed");
+  document.getElementById("toggle-search-btn").classList.add("active");
 }
 
 /* ── Tab switching ────────────────────────────────────────────────────────── */
@@ -25,74 +45,28 @@ function switchTab(tab) {
   clearError();
 }
 
-/* ── ZIP input → update Redfin link ──────────────────────────────────────── */
-function onZipInput(val) {
-  const link = document.getElementById("redfin-link");
-  const zip  = val.trim();
-  link.href = zip.length === 5 && /^\d{5}$/.test(zip)
-    ? `https://www.redfin.com/zipcode/${zip}`
-    : "https://www.redfin.com";
-}
-
-/* ── File selection (ZIP tab) ─────────────────────────────────────────────── */
+/* ── File selection ───────────────────────────────────────────────────────── */
 function onFileSelected(input) {
   selectedFile = input.files[0] || null;
-  const nameEl    = document.getElementById("file-name");
-  const uploadBtn = document.getElementById("upload-btn");
-  if (selectedFile) {
-    nameEl.textContent = selectedFile.name;
-    uploadBtn.disabled = false;
-  } else {
-    nameEl.textContent = "Click to select CSV";
-    uploadBtn.disabled = true;
-  }
+  const nameEl  = document.getElementById("file-name");
+  const btn     = document.getElementById("upload-btn");
+  nameEl.textContent = selectedFile ? selectedFile.name : "";
+  if (btn) btn.disabled = !selectedFile;
 }
 
-/* ── File selection (raw Upload tab) ─────────────────────────────────────── */
-function onFileSelectedUpload(input) {
-  selectedFileRaw = input.files[0] || null;
-  const nameEl    = document.getElementById("file-name-upload");
-  const uploadBtn = document.getElementById("upload-btn-raw");
-  if (selectedFileRaw) {
-    nameEl.textContent = selectedFileRaw.name;
-    uploadBtn.disabled = false;
-  } else {
-    nameEl.textContent = "";
-    uploadBtn.disabled = true;
-  }
-}
-
-/* ── Drag-and-drop (ZIP tab) ──────────────────────────────────────────────── */
 function initDropZone() {
   const zone = document.getElementById("drop-zone");
   if (!zone) return;
-  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
+  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
   zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
   zone.addEventListener("drop", e => {
-    e.preventDefault();
-    zone.classList.remove("drag-over");
+    e.preventDefault(); zone.classList.remove("drag-over");
     const file = e.dataTransfer.files[0];
-    if (file && file.name.endsWith(".csv")) {
+    if (file?.name.endsWith(".csv")) {
       selectedFile = file;
       document.getElementById("file-name").textContent = file.name;
-      document.getElementById("upload-btn").disabled = false;
-    } else {
-      showError("Please drop a .csv file.");
-    }
-  });
-
-  const zoneRaw = document.getElementById("drop-zone-upload");
-  if (!zoneRaw) return;
-  zoneRaw.addEventListener("dragover", e => { e.preventDefault(); zoneRaw.classList.add("drag-over"); });
-  zoneRaw.addEventListener("dragleave", () => zoneRaw.classList.remove("drag-over"));
-  zoneRaw.addEventListener("drop", e => {
-    e.preventDefault();
-    zoneRaw.classList.remove("drag-over");
-    const file = e.dataTransfer.files[0];
-    if (file && file.name.endsWith(".csv")) {
-      selectedFileRaw = file;
-      document.getElementById("file-name-upload").textContent = file.name;
-      document.getElementById("upload-btn-raw").disabled = false;
+      const btn = document.getElementById("upload-btn");
+      if (btn) btn.disabled = false;
     } else {
       showError("Please drop a .csv file.");
     }
@@ -166,10 +140,10 @@ function renderCards(listings) {
   }
 
   listings.forEach((l, idx) => {
-    const cc      = capClass(l.cap_rate || 0);
-    const cfClass = (l.cashflow_year1 || 0) >= 0 ? "pos" : "neg";
-    const cocClass = (l.cash_on_cash || 0) >= 0.05 ? "pos" : "";
-    const noPin   = (!l.lat || !l.lon)
+    const cc       = capClass(l.cap_rate || 0);
+    const cfClass  = (l.cashflow_year1 || 0) >= 0 ? "pos" : "neg";
+    const cocClass = (l.cash_on_cash   || 0) >= 0.05 ? "pos" : "";
+    const noPin    = (!l.lat || !l.lon)
       ? ' <span style="font-size:.63rem;color:#f59e0b" title="Could not geocode">⚠</span>' : "";
 
     const card = document.createElement("div");
@@ -196,15 +170,13 @@ function renderCards(listings) {
   });
 }
 
-/* ── Activate card/marker ─────────────────────────────────────────────────── */
+/* ── Activate card / marker ───────────────────────────────────────────────── */
 function activateCard(idx) {
   document.getElementById(`card-${activeIdx}`)?.classList.remove("active");
   markers[activeIdx]?.closePopup();
-
   activeIdx = idx;
   const card = document.getElementById(`card-${idx}`);
   if (card) { card.classList.add("active"); card.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
-
   const l = currentListings[idx];
   if (l?.lat && l?.lon) {
     map.flyTo([l.lat, l.lon], 15, { duration: 0.7 });
@@ -220,7 +192,6 @@ function renderMarkers(listings) {
 
   listings.forEach((l, idx) => {
     if (!l.lat || !l.lon) { markers.push(null); return; }
-
     const marker = L.marker([l.lat, l.lon], { icon: markerIcon(l.cap_rate || 0, idx) });
     marker.bindPopup(buildPopup(l), { maxWidth: 300 });
     marker.on("click", () => {
@@ -237,7 +208,7 @@ function renderMarkers(listings) {
   if (bounds.length) map.fitBounds(bounds, { padding: [50, 50] });
 }
 
-/* ── Apply results to UI ──────────────────────────────────────────────────── */
+/* ── Apply results ────────────────────────────────────────────────────────── */
 function applyResults(data) {
   currentListings = data.listings;
   document.getElementById("results-count").textContent =
@@ -249,41 +220,80 @@ function applyResults(data) {
   if (data.zip_center && !currentListings.some(l => l.lat)) {
     map.flyTo([data.zip_center.lat, data.zip_center.lon], 12, { duration: 1 });
   }
+  // Collapse search panel so listings take full sidebar
+  collapseSearch();
 }
 
-/* ── Filter params (ZIP tab) ──────────────────────────────────────────────── */
-function filterParams() {
+/* ── Filter params ────────────────────────────────────────────────────────── */
+function filterParams(suffix = "") {
+  const g = id => document.getElementById(id + suffix);
   return {
-    min_cap_rate: parseFloat(document.getElementById("min-cap-rate").value) / 100,
-    min_coc:      parseFloat(document.getElementById("min-coc").value) / 100,
-    max_price:    parseFloat(document.getElementById("max-price").value) || 0,
-    down_pct:     parseFloat(document.getElementById("down-pct").value),
-    rate:         parseFloat(document.getElementById("rate").value),
-    rent_pct:     parseFloat(document.getElementById("rent-pct").value),
+    min_cap_rate: parseFloat(g("min-cap-rate").value) / 100,
+    min_coc:      parseFloat(g("min-coc").value) / 100,
+    max_price:    parseFloat(g("max-price").value) || 0,
+    down_pct:     parseFloat(g("down-pct").value),
+    rate:         parseFloat(g("rate").value),
+    rent_pct:     parseFloat(g("rent-pct").value),
   };
 }
 
-/* ── Filter params (Upload tab) ───────────────────────────────────────────── */
-function filterParamsUpload() {
-  return {
-    min_cap_rate: parseFloat(document.getElementById("min-cap-rate-u").value) / 100,
-    min_coc:      parseFloat(document.getElementById("min-coc-u").value) / 100,
-    max_price:    parseFloat(document.getElementById("max-price-u").value) || 0,
-    down_pct:     parseFloat(document.getElementById("down-pct-u").value),
-    rate:         parseFloat(document.getElementById("rate-u").value),
-    rent_pct:     parseFloat(document.getElementById("rent-pct-u").value),
-  };
+/* ── ZIP input → update Redfin link ──────────────────────────────────────── */
+function onZipInput(val) {
+  const link  = document.getElementById("redfin-link");
+  const valid = /^\d{5}$/.test(val.trim());
+  link.href   = valid ? `https://www.redfin.com/zipcode/${val.trim()}` : "https://www.redfin.com";
+  link.classList.toggle("disabled-link", !valid);
 }
 
-/* ── Analyze (ZIP tab — uploads Redfin CSV for that ZIP) ──────────────────── */
-async function analyzeUpload() {
-  if (!selectedFile) { showError("Please select a CSV file first."); return; }
+/* ── ZIP tab file selection ───────────────────────────────────────────────── */
+function onZipFileSelected(input) {
+  const file = input.files[0] || null;
+  _setZipFile(file);
+  if (file) analyzeZipCsv();   // auto-analyze on select
+}
+
+function _setZipFile(file) {
+  zipFile = file;
+  const nameEl = document.getElementById("zip-file-name");
+  const btn    = document.getElementById("zip-analyze-btn");
+  if (file) {
+    nameEl.textContent = file.name;
+    nameEl.classList.add("has-file");
+    if (btn) btn.disabled = false;
+  } else {
+    nameEl.textContent = "Click or drag CSV here";
+    nameEl.classList.remove("has-file");
+    if (btn) btn.disabled = true;
+  }
+}
+
+/* ── ZIP tab drop zone ────────────────────────────────────────────────────── */
+function initZipDropZone() {
+  const zone = document.getElementById("zip-drop-zone");
+  if (!zone) return;
+  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag-over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault(); zone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file?.name.endsWith(".csv")) {
+      _setZipFile(file);
+      analyzeZipCsv();    // auto-analyze on drop
+    } else {
+      showError("Please drop a .csv file.");
+    }
+  });
+}
+
+/* ── Analyze from ZIP tab ─────────────────────────────────────────────────── */
+async function analyzeZipCsv() {
+  if (!zipFile) { showError("Please select or drop a CSV file first."); return; }
 
   resetResults();
   setLoading(true, "Analyzing listings…");
 
   const fd = new FormData();
-  fd.append("file", selectedFile);
+  fd.append("file", zipFile);
   const fp = filterParams();
   Object.entries(fp).forEach(([k, v]) => fd.append(k, v));
 
@@ -299,16 +309,16 @@ async function analyzeUpload() {
   }
 }
 
-/* ── Analyze (raw Upload tab) ─────────────────────────────────────────────── */
-async function analyzeUploadRaw() {
-  if (!selectedFileRaw) { showError("Please select a CSV file first."); return; }
+/* ── CSV upload ───────────────────────────────────────────────────────────── */
+async function analyzeUpload() {
+  if (!selectedFile) { showError("Please select a CSV file first."); return; }
 
   resetResults();
-  setLoading(true, "Analyzing CSV…");
+  setLoading(true, "Analyzing uploaded CSV…");
 
   const fd = new FormData();
-  fd.append("file", selectedFileRaw);
-  const fp = filterParamsUpload();
+  fd.append("file", selectedFile);
+  const fp = filterParams("-u");
   Object.entries(fp).forEach(([k, v]) => fd.append(k, v));
 
   try {
@@ -331,8 +341,6 @@ function setLoading(on, msg = "Loading…") {
   if (!on) {
     const btn = document.getElementById("upload-btn");
     if (btn) btn.disabled = !selectedFile;
-    const btnRaw = document.getElementById("upload-btn-raw");
-    if (btnRaw) btnRaw.disabled = !selectedFileRaw;
   }
 }
 
@@ -353,4 +361,7 @@ function resetResults() {
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
   initDropZone();
+  initZipDropZone();
+  expandSearch();
+  document.getElementById("toggle-search-btn").classList.add("active");
 });
