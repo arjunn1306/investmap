@@ -14,136 +14,135 @@
   <!-- ── Sidebar ── -->
   <aside id="sidebar">
 
-    <!-- Always-visible top bar -->
     <div id="sidebar-header">
       <div id="logo">
         <i class="fas fa-map-marked-alt"></i>
         <span>InvestMap</span>
       </div>
-      <button id="toggle-search-btn" class="icon-btn" onclick="toggleSearch()" title="New Search">
-        <i class="fas fa-sliders-h"></i>
+      <p class="tagline">Discover high cap-rate investment properties</p>
+    </div>
+
+    <!-- Tab switcher -->
+    <div id="tab-bar">
+      <button class="tab active" data-tab="zip" onclick="switchTab('zip')">
+        <i class="fas fa-search-location"></i> ZIP Search
+      </button>
+      <button class="tab" data-tab="upload" onclick="switchTab('upload')">
+        <i class="fas fa-upload"></i> Upload CSV
       </button>
     </div>
 
-    <!-- Collapsible search panel -->
-    <div id="search-panel">
-      <!-- Tab switcher -->
-      <div id="tab-bar">
-        <button class="tab active" data-tab="zip" onclick="switchTab('zip')">
-          <i class="fas fa-search-location"></i> ZIP Search
-        </button>
-        <button class="tab" data-tab="upload" onclick="switchTab('upload')">
-          <i class="fas fa-upload"></i> Upload CSV
-        </button>
+    <!-- ── ZIP tab ── -->
+    <div id="tab-zip" class="tab-panel">
+
+      <div class="form-group">
+        <label>ZIP Code</label>
+        <input id="zip-input" type="text" placeholder="e.g. 95037" maxlength="5"
+               oninput="onZipInput(this.value)" />
       </div>
 
-      <!-- ── ZIP tab ── -->
-      <div id="tab-zip" class="tab-panel">
-        <div class="form-group">
-          <label>ZIP Code</label>
-          <input id="zip-input" type="text" placeholder="e.g. 95037" maxlength="5" oninput="onZipInput(this.value)" />
+      <!-- Step 1: Get data from Redfin -->
+      <div class="step-box">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Download listings from Redfin</div>
+          <div class="step-desc">Opens Redfin for your ZIP. Click <strong>Download All</strong> on that page.</div>
+          <a id="redfin-link" href="https://www.redfin.com/zipcode/00000" target="_blank" class="redfin-btn">
+            <i class="fas fa-external-link-alt"></i> Open Redfin &rarr;
+          </a>
         </div>
+      </div>
 
-        <!-- Step 1: open Redfin -->
-        <div class="step-box">
-          <div class="step-num">1</div>
-          <div class="step-body">
-            <div class="step-title">Download from Redfin</div>
-            <div class="step-desc">Opens Redfin for your ZIP — click <strong>Download All</strong> on that page.</div>
-            <a id="redfin-link" href="https://www.redfin.com" target="_blank" class="redfin-dl-btn disabled-link">
-              <i class="fas fa-external-link-alt"></i> Open Redfin &rarr;
-            </a>
+      <!-- Step 2: Upload the CSV -->
+      <div class="step-box">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Upload the downloaded CSV</div>
+          <div id="drop-zone" onclick="document.getElementById('csv-file').click()">
+            <i class="fas fa-file-csv"></i>
+            <span id="file-name">Click to select CSV</span>
           </div>
+          <input id="csv-file" type="file" accept=".csv" style="display:none" onchange="onFileSelected(this)" />
         </div>
+      </div>
 
-        <!-- Step 2: drop CSV → auto-analyzes -->
-        <div class="step-box">
-          <div class="step-num">2</div>
-          <div class="step-body">
-            <div class="step-title">Drop the CSV here — analysis starts automatically</div>
-            <div id="zip-drop-zone" onclick="document.getElementById('zip-csv').click()">
-              <i class="fas fa-file-csv"></i>
-              <span id="zip-file-name">Click or drag CSV here</span>
-            </div>
-            <input id="zip-csv" type="file" accept=".csv" style="display:none" onchange="onZipFileSelected(this)" />
-          </div>
-        </div>
-
-        <div id="shared-filters">
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Min Cap Rate</label>
-              <div class="input-affix">
-                <input id="min-cap-rate" type="number" value="4" min="0" max="30" step="0.5" />
-                <span class="suffix">%</span>
-              </div>
-            </div>
-            <div class="form-group half">
-              <label>Min Cash-on-Cash</label>
-              <div class="input-affix">
-                <input id="min-coc" type="number" value="3" min="0" max="30" step="0.5" />
-                <span class="suffix">%</span>
-              </div>
+      <!-- Shared filters -->
+      <div id="shared-filters">
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Min Cap Rate</label>
+            <div class="input-affix">
+              <input id="min-cap-rate" type="number" value="4" min="0" max="30" step="0.5" />
+              <span class="suffix">%</span>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Down Payment</label>
-              <div class="input-affix">
-                <input id="down-pct" type="number" value="25" min="5" max="100" step="5" />
-                <span class="suffix">%</span>
-              </div>
-            </div>
-            <div class="form-group half">
-              <label>Interest Rate</label>
-              <div class="input-affix">
-                <input id="rate" type="number" value="7.0" min="1" max="20" step="0.1" />
-                <span class="suffix">%</span>
-              </div>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Max Price</label>
-              <div class="input-affix">
-                <span class="prefix">$</span>
-                <input id="max-price" type="number" placeholder="Any" min="0" step="50000" />
-              </div>
-            </div>
-            <div class="form-group half">
-              <label>Monthly Rent %</label>
-              <div class="input-affix">
-                <input id="rent-pct" type="number" value="0.7" min="0.1" max="3" step="0.1" />
-                <span class="suffix">%</span>
-              </div>
+          <div class="form-group half">
+            <label>Min Cash-on-Cash</label>
+            <div class="input-affix">
+              <input id="min-coc" type="number" value="3" min="0" max="30" step="0.5" />
+              <span class="suffix">%</span>
             </div>
           </div>
         </div>
 
-        <button class="primary-btn" id="zip-analyze-btn" onclick="analyzeZipCsv()" disabled>
-          <i class="fas fa-chart-bar"></i>&nbsp; Analyze Listings
-        </button>
-      </div><!-- /tab-zip -->
-
-      <!-- ── Upload tab ── -->
-      <div id="tab-upload" class="tab-panel hidden">
-        <div class="upload-info">
-          <p>Upload a Redfin CSV. <strong>How to get it:</strong></p>
-          <ol class="upload-steps">
-            <li>Go to <a id="redfin-link" href="https://www.redfin.com" target="_blank">redfin.com</a> and search your ZIP</li>
-            <li>Scroll down and click <strong>Download All</strong></li>
-            <li>Upload the file below</li>
-          </ol>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Down Payment</label>
+            <div class="input-affix">
+              <input id="down-pct" type="number" value="25" min="5" max="100" step="5" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Interest Rate</label>
+            <div class="input-affix">
+              <input id="rate" type="number" value="7.0" min="1" max="20" step="0.1" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
         </div>
 
-        <div id="drop-zone" onclick="document.getElementById('csv-file').click()">
-          <i class="fas fa-file-csv fa-2x"></i>
-          <p>Click to select CSV</p>
-          <p class="drop-sub">or drag &amp; drop here</p>
-          <span id="file-name"></span>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Max Price</label>
+            <div class="input-affix">
+              <span class="prefix">$</span>
+              <input id="max-price" type="number" placeholder="Any" min="0" step="50000" />
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Monthly Rent %</label>
+            <div class="input-affix">
+              <input id="rent-pct" type="number" value="0.7" min="0.1" max="3" step="0.1" />
+              <span class="suffix">%</span>
+            </div>
+          </div>
         </div>
-        <input id="csv-file" type="file" accept=".csv" style="display:none" onchange="onFileSelected(this)" />
+      </div><!-- /shared-filters -->
 
+      <button class="primary-btn" id="upload-btn" onclick="analyzeUpload()" disabled>
+        <i class="fas fa-chart-bar"></i>&nbsp; Analyze Listings
+      </button>
+
+    </div><!-- /tab-zip -->
+
+    <!-- ── Upload tab (kept for raw CSV uploads) ── -->
+    <div id="tab-upload" class="tab-panel hidden">
+
+      <div class="upload-info">
+        <p>Upload any CSV with columns: <code>address, city, state, zipcode, price</code></p>
+        <p>Optional: <code>est_rent, taxes, insurance, hoa</code></p>
+      </div>
+
+      <div id="drop-zone-upload" onclick="document.getElementById('csv-file-upload').click()">
+        <i class="fas fa-file-csv fa-2x"></i>
+        <p>Click to select a CSV file</p>
+        <p class="drop-sub">or drag &amp; drop here</p>
+        <span id="file-name-upload"></span>
+      </div>
+      <input id="csv-file-upload" type="file" accept=".csv" style="display:none" onchange="onFileSelectedUpload(this)" />
+
+      <div id="shared-filters-upload">
         <div class="form-row">
           <div class="form-group half">
             <label>Min Cap Rate</label>
@@ -192,44 +191,41 @@
             </div>
           </div>
         </div>
-
-        <button class="primary-btn" id="upload-btn" onclick="analyzeUpload()" disabled>
-          <i class="fas fa-chart-bar"></i>&nbsp; Analyze CSV
-        </button>
-      </div><!-- /tab-upload -->
-
-      <!-- Loading -->
-      <div id="loading" class="hidden">
-        <div class="spinner"></div>
-        <p id="loading-msg">Analyzing…</p>
-        <p class="loading-sub">Scraping may take 30–60 seconds</p>
       </div>
 
-      <!-- Error -->
-      <div id="error-box" class="hidden">
-        <i class="fas fa-exclamation-circle"></i>
-        <span id="error-text"></span>
-      </div>
-    </div><!-- /search-panel -->
+      <button class="primary-btn" id="upload-btn-raw" onclick="analyzeUploadRaw()" disabled>
+        <i class="fas fa-chart-bar"></i>&nbsp; Analyze CSV
+      </button>
 
-    <!-- Results area (always visible, fills remaining space) -->
-    <div id="results-area">
-      <div id="results-header" class="hidden">
-        <span id="results-count"></span>
-        <div id="legend">
-          <span class="dot dot-excellent"></span>&ge;8%
-          <span class="dot dot-good"></span>6–8%
-          <span class="dot dot-fair"></span>4–6%
-          <span class="dot dot-poor"></span>&lt;4%
-          <span class="legend-label">Cap Rate</span>
-        </div>
-      </div>
-      <div id="listings-list"></div>
-      <div id="map-hint" class="hidden">
-        <i class="fas fa-map-marked-alt"></i>
-        <p>Enter a ZIP code to find investment properties</p>
+    </div><!-- /tab-upload -->
+
+    <!-- Loading -->
+    <div id="loading" class="hidden">
+      <div class="spinner"></div>
+      <p id="loading-msg">Analyzing…</p>
+      <p class="loading-sub">Geocoding may take a minute for new addresses</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" class="hidden">
+      <i class="fas fa-exclamation-circle"></i>
+      <span id="error-text"></span>
+    </div>
+
+    <!-- Results header -->
+    <div id="results-header" class="hidden">
+      <span id="results-count"></span>
+      <div id="legend">
+        <span class="dot dot-excellent"></span>&ge;8%
+        <span class="dot dot-good"></span>6–8%
+        <span class="dot dot-fair"></span>4–6%
+        <span class="dot dot-poor"></span>&lt;4%
+        <span class="legend-label">Cap Rate</span>
       </div>
     </div>
+
+    <!-- Listing cards -->
+    <div id="listings-list"></div>
 
   </aside>
 
