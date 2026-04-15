@@ -375,5 +375,23 @@ input::placeholder { color: var(--text-muted); }
 }
 .redfin-btn:hover { background: #c62828; }
 
+/* ── Results mode — search form hides, listings fill panel ───────────────── */
+#sidebar.results-mode #sidebar-header { display: none; }
+#sidebar.results-mode #tab-bar        { display: none; }
+#sidebar.results-mode .tab-panel      { display: none; }
+#sidebar.results-mode #loading        { display: none; }
+
+/* Back-to-search button */
+#back-btn {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; gap: 5px;
+  color: var(--text-dim); font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: border-color .15s, color .15s;
+}
+#back-btn:hover { border-color: var(--accent); color: var(--accent); }
+#back-btn i { font-size: 0.75rem; }
+
 /* ── Utility ──────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

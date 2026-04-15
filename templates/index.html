@@ -215,12 +215,17 @@
     <!-- Results header -->
     <div id="results-header" class="hidden">
       <span id="results-count"></span>
-      <div id="legend">
-        <span class="dot dot-excellent"></span>&ge;8%
-        <span class="dot dot-good"></span>6–8%
-        <span class="dot dot-fair"></span>4–6%
-        <span class="dot dot-poor"></span>&lt;4%
-        <span class="legend-label">Cap Rate</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <div id="legend">
+          <span class="dot dot-excellent"></span>&ge;8%
+          <span class="dot dot-good"></span>6–8%
+          <span class="dot dot-fair"></span>4–6%
+          <span class="dot dot-poor"></span>&lt;4%
+          <span class="legend-label">Cap Rate</span>
+        </div>
+        <button id="back-btn" onclick="backToSearch()" title="Modify search">
+          <i class="fas fa-sliders-h"></i> Filters
+        </button>
       </div>
     </div>
 

@@ -244,11 +244,20 @@ function applyResults(data) {
     `${data.total} matching / ${data.total_scraped} total`;
   document.getElementById("results-header").classList.remove("hidden");
   document.getElementById("map-placeholder").classList.add("hidden");
+
+  // Collapse search form so listings fill the full panel
+  document.getElementById("sidebar").classList.add("results-mode");
+
   renderCards(currentListings);
   renderMarkers(currentListings);
   if (data.zip_center && !currentListings.some(l => l.lat)) {
     map.flyTo([data.zip_center.lat, data.zip_center.lon], 12, { duration: 1 });
   }
+}
+
+/* ── Back to search ───────────────────────────────────────────────────────── */
+function backToSearch() {
+  document.getElementById("sidebar").classList.remove("results-mode");
 }
 
 /* ── Filter params (ZIP tab) ──────────────────────────────────────────────── */
@@ -346,6 +355,7 @@ function resetResults() {
   clearError();
   document.getElementById("results-header").classList.add("hidden");
   document.getElementById("listings-list").innerHTML = "";
+  document.getElementById("sidebar").classList.remove("results-mode");
   activeIdx = -1;
 }
 
