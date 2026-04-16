@@ -247,6 +247,47 @@ def underwrite_and_geocode(df, params):
     }, None
 
 
+def normalize_redfin_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    If the uploaded CSV looks like a raw Redfin download (uppercase columns),
+    map it to the standard lowercase column names we expect.
+    Returns the df unchanged if it already has standard columns.
+    """
+    df = df.copy()
+    # Strip whitespace from column names
+    df.columns = [c.strip() for c in df.columns]
+
+    # Already normalized — nothing to do
+    if "address" in df.columns and "price" in df.columns:
+        return df
+
+    # Redfin column → our standard column
+    redfin_map = {
+        "ADDRESS":           "address",
+        "CITY":              "city",
+        "STATE OR PROVINCE": "state",
+        "ZIP OR POSTAL CODE":"zipcode",
+        "PRICE":             "price",
+        "BEDS":              "beds",
+        "SQUARE FEET":       "sq_ft",
+        "HOA/MONTH":         "hoa",
+        "LATITUDE":          "lat",
+        "LONGITUDE":         "lon",
+    }
+    df = df.rename(columns=redfin_map)
+
+    # Redfin URL column has a very long name starting with "URL"
+    url_col = next((c for c in df.columns if c.startswith("URL")), None)
+    if url_col:
+        df = df.rename(columns={url_col: "listing_url"})
+
+    # Clean up numeric price/zip fields Redfin sometimes exports oddly
+    if "zipcode" in df.columns:
+        df["zipcode"] = df["zipcode"].astype(str).str.split(".").str[0].str.zfill(5)
+
+    return df
+
+
 def parse_params(source: dict) -> dict:
     return {
         "min_cap_rate": float(source.get("min_cap_rate", 0.04)),
@@ -320,6 +361,9 @@ def upload():
             df = pd.read_csv(io.StringIO(f.read().decode("utf-8", errors="replace")))
         except Exception as e:
             return jsonify({"error": f"Could not parse CSV: {e}"}), 400
+
+        # Normalize Redfin-format CSV (uppercase columns) to our standard lowercase names
+        df = normalize_redfin_csv(df)
 
         required = {"address", "city", "state", "zipcode", "price"}
         missing  = required - set(df.columns)
