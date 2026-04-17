@@ -298,7 +298,9 @@ async function analyzeUpload() {
 
   try {
     const res  = await fetch("/api/upload", { method: "POST", body: fd });
-    const data = await res.json();
+    let data;
+    try { data = await res.json(); }
+    catch { setLoading(false); showError(`Server error (HTTP ${res.status}). Try again or refresh.`); return; }
     setLoading(false);
     if (!res.ok) { showError(data.error || "An unexpected error occurred."); return; }
     applyResults(data);
@@ -322,7 +324,9 @@ async function analyzeUploadRaw() {
 
   try {
     const res  = await fetch("/api/upload", { method: "POST", body: fd });
-    const data = await res.json();
+    let data;
+    try { data = await res.json(); }
+    catch { setLoading(false); showError(`Server error (HTTP ${res.status}). Try again or refresh.`); return; }
     setLoading(false);
     if (!res.ok) { showError(data.error || "An unexpected error occurred."); return; }
     applyResults(data);

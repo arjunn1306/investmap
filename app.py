@@ -16,6 +16,7 @@ import time
 import requests
 import pandas as pd
 from flask import Flask, render_template, request, jsonify
+from werkzeug.exceptions import HTTPException
 
 from real_estate_engine import Financing, OperatingAssumptions, RealEstateEngine
 
@@ -31,6 +32,8 @@ app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024   # 5 MB upload limit
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    if isinstance(e, HTTPException):
+        return jsonify({"error": e.description}), e.code
     return jsonify({"error": str(e)}), 500
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -207,15 +210,31 @@ def underwrite_and_geocode(df, params):
     else:
         zip_center = geocode_zip(inferred_zip, geo_cache) if inferred_zip else None
 
+    # Cap fresh Nominatim calls to avoid gunicorn timeout (cache hits are free)
+    MAX_NEW_GEOCODE = 15
+    new_geocode_count = 0
+
     listings = []
     for _, row in filtered.iterrows():
         row_zip = str(row.get("zipcode", inferred_zip))
         addr    = str(row.get("address", "")).strip()
-        # Use embedded coords when available; fall back to Nominatim geocoding
-        coords = coord_map.get(addr) or geocode_address(
-            addr, str(row.get("city", "")),
-            str(row.get("state", "")), row_zip, geo_cache,
-        )
+
+        # 1. Embedded coords from CSV (instant)
+        coords = coord_map.get(addr)
+
+        # 2. Already cached in geocode_cache.json (instant)
+        if not coords:
+            cache_key = f"{addr}|{row.get('city', '')}|{row.get('state', '')}|{row_zip}"
+            if cache_key in geo_cache:
+                coords = geo_cache[cache_key]
+
+        # 3. Fresh Nominatim call (capped to avoid timeout)
+        if not coords and new_geocode_count < MAX_NEW_GEOCODE:
+            coords = geocode_address(
+                addr, str(row.get("city", "")),
+                str(row.get("state", "")), row_zip, geo_cache,
+            )
+            new_geocode_count += 1
         listing = {
             "address":           str(row.get("address", "")),
             "city":              str(row.get("city", "")),
