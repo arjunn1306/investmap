@@ -119,21 +119,61 @@ def safe_float(val):
 
 
 def fill_missing_columns(df: pd.DataFrame, rent_pct: float) -> pd.DataFrame:
+    """
+    Fill missing financial columns with estimates.
+
+    Rent is adjusted by bedroom count because rent-to-price ratios differ by
+    unit size — smaller units command higher ratios than large single-family homes.
+    This ensures cap rates vary meaningfully across the portfolio rather than
+    being identical for every property.
+    """
     df = df.copy()
-    for col in ["price", "est_rent", "taxes", "insurance", "hoa", "other_exp"]:
+    for col in ["price", "est_rent", "taxes", "insurance", "hoa", "other_exp", "beds"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    def fill_estimate(col, multiplier):
-        if col not in df.columns or df[col].isna().all():
-            df[col] = df["price"] * multiplier
-        else:
-            mask = df[col].isna() | (df[col] == 0)
-            df.loc[mask, col] = df.loc[mask, "price"] * multiplier
+    # Bed-count multiplier: real markets show smaller units have higher rent/price ratios
+    BED_MULTIPLIER = {0: 1.35, 1: 1.25, 2: 1.10, 3: 1.00, 4: 0.88, 5: 0.76}
 
-    fill_estimate("est_rent",  rent_pct)
-    fill_estimate("taxes",     0.012)
-    fill_estimate("insurance", 0.002)
+    def beds_multiplier(beds_val):
+        try:
+            b = int(beds_val)
+            return BED_MULTIPLIER.get(b, 0.70)  # 6+ beds → lower ratio
+        except (TypeError, ValueError):
+            return 1.00  # unknown → use base rate
+
+    # Estimate rent only for rows where est_rent is missing
+    if "est_rent" not in df.columns:
+        df["est_rent"] = float("nan")
+    mask = df["est_rent"].isna() | (df["est_rent"] == 0)
+    if mask.any():
+        beds_col = df.get("beds", pd.Series([None] * len(df), index=df.index))
+        multipliers = beds_col.map(beds_multiplier)
+        df.loc[mask, "est_rent"] = df.loc[mask, "price"] * rent_pct * multipliers[mask]
+
+    # Taxes: use sq_ft-based estimate when available (assessments track sq_ft better than price)
+    if "taxes" not in df.columns:
+        df["taxes"] = float("nan")
+    tax_mask = df["taxes"].isna() | (df["taxes"] == 0)
+    if tax_mask.any():
+        if "sq_ft" in df.columns and df["sq_ft"].notna().any():
+            # ~$1.20/sqft/year is a rough national average; scales with size not list price
+            sqft = df.loc[tax_mask, "sq_ft"].fillna(df["sq_ft"].median())
+            df.loc[tax_mask, "taxes"] = sqft * 1.20
+        else:
+            df.loc[tax_mask, "taxes"] = df.loc[tax_mask, "price"] * 0.012
+
+    # Insurance: flat $/sqft is more realistic than % of price
+    if "insurance" not in df.columns:
+        df["insurance"] = float("nan")
+    ins_mask = df["insurance"].isna() | (df["insurance"] == 0)
+    if ins_mask.any():
+        if "sq_ft" in df.columns and df["sq_ft"].notna().any():
+            sqft = df.loc[ins_mask, "sq_ft"].fillna(df["sq_ft"].median())
+            df.loc[ins_mask, "insurance"] = sqft * 0.55  # ~$0.55/sqft/year
+        else:
+            df.loc[ins_mask, "insurance"] = df.loc[ins_mask, "price"] * 0.002
+
     for col in ["hoa", "other_exp"]:
         if col not in df.columns:
             df[col] = 0.0
